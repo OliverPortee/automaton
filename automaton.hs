@@ -1,6 +1,8 @@
+{-# LANGUAGE AllowAmbiguousTypes #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE MultiParamTypeClasses #-}
 
 import Data.Set (Set, fromList, member, disjoint, empty, union, singleton)
-import Control.Exception (assert)
 import Data.List (foldl')
 
 ------------------------- TODO -------------------------
@@ -11,65 +13,65 @@ import Data.List (foldl')
 -- Visualisierung von Automaten mit Haskell Diagrams
 
 ------------------------- Automaton -------------------------
-class Automaton a where
-    accepts :: a -> String -> Bool
-
-type State = Int
-type States = Set State
 type Alphabet = Set Char
-type StartState = State
-type StartStates = Set State
-type AcceptStates = States
+
+class (Ord s) => Automaton a s where
+    statesOf :: a -> Set s
+    alphabetOf :: a -> Alphabet
+    acceptsWord :: a -> String -> Bool
+
 
 ------------------------- DFA -------------------------
-type DFATrans = State -> Char -> Maybe State
+data DFA state = DFA { statesOfDfa :: Set state
+                     , alphabetOfDfa :: Alphabet
+                     , transOfDfa :: state -> Char -> Maybe state
+                     , startOfDfa :: state
+                     , acceptStatesOfDfa :: Set state
+                     }
 
-data DFA = DFA { dfaStates :: States
-               , dfaAlphabet :: Alphabet
-               , dfaNext :: DFATrans
-               , dfaStart :: StartState
-               , dfaAcceptStates :: AcceptStates
-               }
-
-instance Automaton DFA where
-    accepts dfa word = case foldl' next start word of
-                        Just state -> member state (dfaAcceptStates dfa)
+instance (Ord state) => Automaton (DFA state) state where
+    statesOf = statesOfDfa
+    alphabetOf = alphabetOfDfa
+    acceptsWord dfa word = case foldl' next start word of
+                        Just state -> member state (acceptStatesOfDfa dfa)
                         Nothing -> False
-        where start = Just (dfaStart dfa)
-              next :: Maybe State -> Char -> Maybe State
-              next maybeState char = maybeState >>= (flip $ dfaNext dfa) char
- 
+        where start = Just (startOfDfa dfa)
+              next maybeState char = maybeState >>= (flip $ transOfDfa dfa) char
+
 
 ------------------------- NFA -------------------------
-type NFATrans = State -> Char -> States
+data NFA state = NFA { statesOfNfa :: Set state
+                     , alphabetOfNfa :: Alphabet
+                     , transOfNfa :: state -> Char -> Set state
+                     , startsOfNfa :: Set state
+                     , acceptStatesOfNfa :: Set state
+                     }
 
-data NFA = NFA { nfaStates :: States
-               , nfaAlphabet :: Alphabet
-               , nfaNext :: NFATrans
-               , nfaStarts :: StartStates
-               , nfaAcceptStates :: AcceptStates
-               }
-
-instance Automaton NFA where
-    accepts nfa word = not $ disjoint (foldl' next start word) (nfaAcceptStates nfa)
-        where start = nfaStarts nfa
-              next :: States -> Char -> States
+instance (Ord state) => Automaton (NFA state) state where
+    statesOf = statesOfNfa
+    alphabetOf = alphabetOfNfa
+    acceptsWord nfa word = not $ disjoint (foldl' next start word) (acceptStatesOfNfa nfa)
+        where start = startsOfNfa nfa
               next states char = foldl' (next' char) empty states
-              next' :: Char -> States -> State -> States
-              next' char states state = union states ((nfaNext nfa) state char)
+              next' char states state = union states ((transOfNfa nfa) state char)
 
 
 ------------------------- Conversions -------------------------
-dfaToNfa :: DFA -> NFA
-dfaToNfa (DFA states alphabet next start accepts) = NFA states alphabet next' start' accepts
-    where start' = singleton start
-          next' state char = case next state char of
-                                Just st -> singleton st
-                                Nothing -> empty
 
+--dfaToNfa :: DFA -> NFA
+--dfaToNfa (DFA states alphabet next start accepts) = NFA states alphabet next' start' accepts
+    --where start' = singleton start
+          --next' state char = case next state char of
+                                --Just st -> singleton st
+                                --Nothing -> empty
+ 
+ 
+
+--nfaToDfa :: NFA -> DFA
+--nfaToDfa (NFA states alphabet next start accepts) = DFA states' alphabet next' start' accepts'
 
 ------------------------- examples -------------------------
-dfa1 :: DFA
+dfa1 :: DFA Int
 dfa1 = DFA states alphabet next start acceptStates
 states = fromList [1, 2]
 alphabet = fromList "ab"
@@ -80,6 +82,6 @@ start = 1
 acceptStates = fromList [1]
 
 
-main = print $ dfa1 `accepts` "abab"
+main = print $ dfa1 `acceptsWord` "abab"
 
 
